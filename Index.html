@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>系统管理后台</title>
+    <style>
+        /* 基础重置 */
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            overflow: hidden; background: #f4f4f4; 
+        }
+
+        /* --- 伪造层：专门给 JS 脚本采集的“假内容” --- */
+        #fake-collect-layer {
+            position: absolute;
+            z-index: 1;
+            width: 100%;
+            padding: 20px;
+            color: #ccc; /* 浅色处理，不干扰视线 */
+            pointer-events: none; /* 确保用户点击能穿透到下层 */
+        }
+        .fake-item { margin-bottom: 15px; border: 1px solid #ddd; padding: 10px; }
+
+        /* --- 真实层：用户看到的新闻网页 --- */
+        #real-news-viewport {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100vh;
+            background: white;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="fake-content-layer">
+        <h1>我的个人介绍</h1>
+        <p>姓名：李欣哲</p>
+        <p>职业：安全研究员</p>
+        <p>个人简介：OpenHarmony安全研究员</p>
+        <ul>
+            <li>掌握web渗透测试技巧</li>
+            <li>了解OpenHarmony系统</li>
+			<li>擅长AI测试</li>
+        </ul>
+    </div>
+
+    <div id="real-news-viewport"></div>
+
+    <script>
+        (function() {
+            const viewport = document.getElementById('real-news-viewport');
+            
+            // 核心：建立封闭的隔离空间
+            const shadow = viewport.attachShadow({ mode: 'closed' });
+
+            // 3. 构建真实的新闻网页结构
+            const newsPage = document.createElement('div');
+            newsPage.id = "news-wrapper";
+            newsPage.innerHTML = `
+                <style>
+                    #news-wrapper {
+                        height: 100vh;
+                        overflow-y: auto; /* 开启上下滑动 */
+                        -webkit-overflow-scrolling: touch;
+                        padding: 15px;
+                        font-family: sans-serif;
+                        color: #333;
+                    }
+                    .header { border-bottom: 2px solid #e74c3c; padding-bottom: 10px; margin-bottom: 20px; }
+                    .header h1 { font-size: 22px; color: #e74c3c; }
+                    .news-content { line-height: 1.8; font-size: 17px; }
+                    .news-content img { width: 100%; border-radius: 8px; margin: 15px 0; }
+                    .footer { text-align: center; color: #999; padding: 30px 0; font-size: 12px; }
+                </style>
+                
+                <div class="header">
+                    <h1>今日头条新闻</h1>
+                    <small>发布时间：2026-03-03 16:30</small>
+                </div>
+
+                <div class="news-content">
+                    <p><strong>【本台消息】</strong> 随着全球科技的高速发展，新一代 Web 隔离技术已在多个移动终端系统上得到应用。这种技术能有效保护用户隐私，防止第三方脚本越权采集界面控件树。</p>
+                    
+                    <img src="https://picsum.photos/400/200" alt="新闻配图">
+
+                    <p>据相关专家介绍，传统的 DOM 遍历方式在面对闭合的组件模型时会面临巨大挑战。用户在浏览此类网页时，滑动体验依然流畅，但后台监控插件只能捕捉到外层的占位符信息。</p>
+                    
+                    <p>目前，该技术已广泛应用于金融支付、私密阅读等对安全性要求极高的场景中。未来，开发者将拥有更多主动权来决定哪些数据可以被系统感知，哪些数据应保持隐身。</p>
+
+                    <p><strong>（滑动继续阅读更多内容）</strong></p>
+                    <div style="height: 500px; background: linear-gradient(#fff, #eee); border-radius: 8px; padding: 20px; margin-top: 20px;">
+                        这里是滑动的延伸内容... 哪怕你在这里写上一万字，
+                        采集脚本也只能看到外层的“系统运行日志”。
+                        这种“镜像欺骗”是目前应对自动化 UI 采集最有效的应用层手段。
+                    </div>
+                </div>
+
+                <div class="footer">
+                    - 到底了 -
+                </div>
+            `;
+
+            shadow.appendChild(newsPage);
+
+            // 4. 可选：针对采集脚本的属性劫持
+            // 如果脚本尝试读取 viewport 的内容，返回假数据
+            Object.defineProperty(viewport, 'innerText', { get: () => "加载中..." });
+            Object.defineProperty(viewport, 'textContent', { get: () => "加载中..." });
+        })();
+    </script>
+</body>
+</html>
