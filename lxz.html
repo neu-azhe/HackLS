@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>伊朗新闻</title>
+    <style>
+        /* 基础重置 */
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            overflow: hidden; background: #f4f4f4; 
+        }
+
+        /* --- 伪造层：专门给 JS 脚本采集的“假内容” --- */
+        #fake-collect-layer {
+            position: absolute;
+            z-index: 1;
+            width: 100%;
+            padding: 20px;
+            color: #ccc; /* 浅色处理，不干扰视线 */
+            pointer-events: none; /* 确保用户点击能穿透到下层 */
+        }
+        .fake-item { margin-bottom: 15px; border: 1px solid #ddd; padding: 10px; }
+
+        /* --- 真实层：用户看到的新闻网页 --- */
+        #real-news-viewport {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100vh;
+            background: white;
+        }
+		
+    </style>
+</head>
+<body>
+
+    <div id="fake-collect-layer">
+        <h1>我的个人介绍</h1>
+        <p>姓名：李欣哲</p>
+        <p>职业：安全研究员</p>
+        <p>个人简介：OpenHarmony安全研究员，OpenHarmony安全测试经理，负责OpenHarmony3.x-6.x安全测试，正在对此功能进行渗透测试</p>
+        <ul>
+            <li>掌握b渗透测试技巧</li>
+            <li>了解OpenHarmony系统</li>
+			      <li>正在进行LS测试，看到这你已经被攻击了</li>
+        </ul>
+    </div>
+
+    <div id="real-news-viewport"></div>
+
+    <script>
+        (function() {
+            const viewport = document.getElementById('real-news-viewport');
+            
+            // 核心：建立封闭的隔离空间
+            const shadow = viewport.attachShadow({ mode: 'closed' });
+
+            // 3. 构建真实的新闻网页结构
+            const newsPage = document.createElement('div');
+            newsPage.id = "news-wrapper";
+            newsPage.innerHTML = `
+                <style>
+                    #news-wrapper {
+                        height: 100vh;
+                        overflow-y: auto; /* 开启上下滑动 */
+                        -webkit-overflow-scrolling: touch;
+                        padding: 15px;
+                        font-family: sans-serif;
+                        color: #333;
+                    }
+                    .header { border-bottom: 2px solid #e74c3c; padding-bottom: 10px; margin-bottom: 20px; }
+                    .header h1 { font-size: 22px; color: #e74c3c; }
+                    .news-content { line-height: 1.8; font-size: 17px; }
+                    .news-content img { width: 100%; border-radius: 8px; margin: 15px 0; }
+                    .footer { text-align: center; color: #999; padding: 30px 0; font-size: 12px; }
+                </style>
+                
+                <div class="header">
+                    <h1>快讯丨伊朗代表呼吁联合国针对美以军事打击采取行动</h1>
+                    <small>发布时间：2026-03-03 16:30</small>
+                </div>
+
+                <div class="news-content">
+                    <p>伊朗常驻联合国代表伊拉瓦尼2日在纽约联合国总部发表声明，呼吁联合国针对美国和以色列对伊朗发动的军事打击采取“坚定、明确、毫不含糊的行动”。</p>
+                    
+                    <img src="https://pics2.baidu.com/feed/c75c10385343fbf2a8243babe0f79b9164388f4c.jpeg@f_auto?token=ac12b4bdd24d4629c058939ffe564d36" alt="新闻配图">
+
+                    <p>声明说，<strong>美国和以色列对伊朗发动的军事打击是一起“蓄意侵略行为”，公然违反《联合国宪章》，是对国际法基础的直接攻击。</strong>美以两国蓄意袭击伊朗最高领袖和多名高级军官，严重违反国际法，是对主权平等的直接攻击。这种行为危及整个国际体系。美以蓄意袭击伊朗平民和民用基础设施，伊朗南部霍尔木兹甘省一所女子学校遇袭，造成大量人员伤亡。这些行为构成侵略，构成战争罪，构成反人类罪。</p>
+                    
+                    <p>声明说，伊朗并未构成迫在眉睫的威胁，其核计划完全出于和平目的。伊朗一直在进行严肃的外交谈判，没有任何法律依据可以为这次袭击辩护。伊朗正在行使其根据《联合国宪章》第51条享有的自卫权，其回应合法、必要且适度，只针对敌对势力的军事目标，不以平民为目标。伊朗不寻求战争，也不寻求局势升级，但绝不会放弃主权。只要侵略行为持续，伊朗将毫不犹豫地坚决捍卫自身利益。</p>
+
+                    <p>声明说，事实很清楚，侵略行为很清楚，责任也很清楚。安理会必须采取“坚定、明确、毫不含糊的行动”。</p>
+					
+					<p>声明还说，美国在担任3月联合国安理会轮值主席国的第一天，就在“维护国际和平与安全”议程下召开关于在武装冲突中保护儿童、技术和教育的高级别会议，与此同时却对伊朗城市发动导弹袭击，轰炸学校，杀害儿童，这一行为“极其可耻和虚伪”。</p>
+                </div>
+                <div class="footer">
+                    - 到底了 -
+                </div>
+            `;
+
+            shadow.appendChild(newsPage);
+
+            // 4. 可选：针对采集脚本的属性劫持
+            // 如果脚本尝试读取 viewport 的内容，返回假数据
+            Object.defineProperty(viewport, 'innerText', { get: () => "加载中..." });
+            Object.defineProperty(viewport, 'textContent', { get: () => "加载中..." });
+        })();
+    </script>
+</body>
+</html>
