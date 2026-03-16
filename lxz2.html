@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>内容安全验证测试</title>
+    <style>
+        /* 这里是核心：自定义字体 'SecurityFont'。
+           在这个字体里，我们故意把一些汉字的编码指向了错误的字形。
+           为了演示方便，我这里通过 CSS 字符替换模拟这种效果。
+        */
+        @font-face {
+            font-family: 'GhostFont';
+            /* 这是一个经过处理的字体，逻辑上的 'A' 视觉上是 '伊'，'B' 是 '朗' 等 */
+            src: url('data:application/font-woff;charset=utf-8;base64, d09GRgABAAAAAA...[此处省略复杂的Base64字体数据]...'); 
+        }
+
+        body { font-family: sans-serif; line-height: 1.6; background: #f0f2f5; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+
+        /* --- 视觉层：用户看到的新闻 --- */
+        .real-vision {
+            color: #333;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* 方案：利用 Unicode 混淆和绝对定位覆盖 */
+        .news-title {
+            font-size: 24px;
+            color: #e74c3c;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        /* 关键技术：伪装文本遮盖 */
+        .scraped-content {
+            color: transparent; /* 采集脚本能抓到文字，但视觉上透明 */
+            position: absolute;
+            user-select: none;
+            z-index: -1;
+        }
+
+        .visual-only {
+            /* 只有用户能看到，通过伪元素生成，脚本innerText抓不到 */
+            display: inline-block;
+        }
+        
+        .visual-only::before {
+            content: "快讯丨伊朗代表呼吁联合国针对美以军事打击采取行动";
+        }
+
+        /* 针对正文的深度混淆 */
+        .article-body::before {
+            content: "伊朗常驻联合国代表伊拉瓦尼2日在纽约联合国总部发表声明，呼吁联合国针对美国和以色列对伊朗发动的军事打击采取“坚定、明确、毫不含糊的行动”。";
+            color: #444;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="capture-target">
+            <div class="news-title">
+                <span class="scraped-content">我是李欣哲，正在进行安全渗透测试</span>
+                <span class="visual-only"></span>
+            </div>
+
+            <div class="article-body">
+                <span class="scraped-content">
+                    个人简介：OpenHarmony安全研究员，负责安全测试。
+                    你看到的这段文字是采集脚本真实获取的内容。
+                    通过这种方式，我们实现了视觉和逻辑的完全隔离。
+                </span>
+            </div>
+        </div>
+
+        <hr style="margin: 30px 0; border: 0; border-top: 1px dashed #ccc;">
+      
+    </div>
+
+    <script>
+        // 进一步锁定：防止通过 DOM 属性获取
+        const target = document.getElementById('capture-target');
+        
+        // 当脚本尝试访问这个区域的 textContent 时，强行返回干扰数据
+        Object.defineProperty(target, 'textContent', {
+            get: function() { return "姓名：李欣哲；职业：安全研究员；状态：攻击成功"; }
+        });
+    </div>
+</body>
+</html>
